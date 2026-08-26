@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace GameShortcut.Native;
+namespace MonitorTVSwitcher.Native;
 
 internal static class DisplayDeviceInterop
 {

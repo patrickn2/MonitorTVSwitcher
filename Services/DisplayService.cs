@@ -1,7 +1,7 @@
-using GameShortcut.Models;
-using GameShortcut.Native;
+using MonitorTVSwitcher.Models;
+using MonitorTVSwitcher.Native;
 
-namespace GameShortcut.Services;
+namespace MonitorTVSwitcher.Services;
 
 internal static class DisplayService
 {

@@ -1,6 +1,6 @@
-using GameShortcut.Native;
+using MonitorTVSwitcher.Native;
 
-namespace GameShortcut.Models;
+namespace MonitorTVSwitcher.Models;
 
 internal sealed class DisplayInfo
 {

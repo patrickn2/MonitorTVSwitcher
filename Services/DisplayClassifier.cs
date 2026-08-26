@@ -1,6 +1,6 @@
-using GameShortcut.Models;
+using MonitorTVSwitcher.Models;
 
-namespace GameShortcut.Services;
+namespace MonitorTVSwitcher.Services;
 
 internal static class DisplayClassifier
 {

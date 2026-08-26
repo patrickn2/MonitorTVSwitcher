@@ -1,6 +1,6 @@
 using Microsoft.Win32;
 
-namespace GameShortcut.Services;
+namespace MonitorTVSwitcher.Services;
 
 internal static class StartupService
 {

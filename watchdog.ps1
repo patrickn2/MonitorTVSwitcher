@@ -1,7 +1,8 @@
 $ErrorActionPreference = "Continue"
-$exe = "c:\Users\patri\OneDrive\Documents\Projects\GameShortcut\bin\Release\net10.0-windows\GameShortcut.exe"
-$log = Join-Path $env:APPDATA "GameShortcut\switch.log"
-$recovery = Join-Path $env:APPDATA "GameShortcut\recovery.log"
+$repoRoot = $PSScriptRoot
+$exe = Join-Path $repoRoot "bin\Release\net10.0-windows\MonitorTVSwitcher.exe"
+$log = Join-Path $env:APPDATA "MonitorTVSwitcher\switch.log"
+$recovery = Join-Path $env:APPDATA "MonitorTVSwitcher\recovery.log"
 
 function Write-Recovery($msg) {
     $line = "{0:yyyy-MM-dd HH:mm:ss.fff} {1}" -f (Get-Date), $msg
@@ -10,8 +11,8 @@ function Write-Recovery($msg) {
 }
 
 function Restore-Monitor {
-    Write-Recovery "RECOVERY: stopping GameShortcut and switching to monitor"
-    Get-Process GameShortcut -ErrorAction SilentlyContinue | Stop-Process -Force
+    Write-Recovery "RECOVERY: stopping MonitorTVSwitcher and switching to monitor"
+    Get-Process MonitorTVSwitcher, GameShortcut -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 1
     & $exe --switch-to monitor
     Write-Recovery "RECOVERY: monitor switch exit $LASTEXITCODE"

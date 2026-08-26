@@ -1,7 +1,7 @@
-using GameShortcut.Models;
-using GameShortcut.Services;
+using MonitorTVSwitcher.Models;
+using MonitorTVSwitcher.Services;
 
-namespace GameShortcut;
+namespace MonitorTVSwitcher;
 
 internal static class OneShotSwitch
 {

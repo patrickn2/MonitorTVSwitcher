@@ -1,8 +1,8 @@
-using GameShortcut.Forms;
-using GameShortcut.Models;
-using GameShortcut.Services;
+using MonitorTVSwitcher.Forms;
+using MonitorTVSwitcher.Models;
+using MonitorTVSwitcher.Services;
 
-namespace GameShortcut;
+namespace MonitorTVSwitcher;
 
 internal sealed class TrayApplicationContext : ApplicationContext
 {
@@ -190,7 +190,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private static Icon LoadIcon()
     {
         var assembly = typeof(TrayApplicationContext).Assembly;
-        using var stream = assembly.GetManifestResourceStream("GameShortcut.Assets.tray.ico");
+        using var stream = assembly.GetManifestResourceStream("MonitorTVSwitcher.Assets.tray.ico");
         if (stream is not null)
         {
             return new Icon(stream);

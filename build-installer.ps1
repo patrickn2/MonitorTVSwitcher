@@ -14,7 +14,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
-$Csproj = Join-Path $RepoRoot "GameShortcut.csproj"
+$Csproj = Join-Path $RepoRoot "MonitorTVSwitcher.csproj"
 $Iss = Join-Path $RepoRoot "installer\MonitorTVSwitcher.iss"
 $PublishDir = Join-Path $RepoRoot "artifacts\publish"
 $OutputDir = Join-Path $RepoRoot "dist"
@@ -27,7 +27,7 @@ function Get-AppVersion {
     $raw = Get-Content -Raw -Path $Csproj
     $match = [regex]::Match($raw, "<Version>([^<]+)</Version>")
     if (-not $match.Success) {
-        throw "Could not read <Version> from GameShortcut.csproj"
+        throw "Could not read <Version> from MonitorTVSwitcher.csproj"
     }
     return $match.Groups[1].Value.Trim()
 }
@@ -94,7 +94,7 @@ Write-Host "Building Monitor/TV Switcher $version installer"
 
 if (-not $SkipPublish) {
     Write-Host "Publishing self-contained win-x64 build..."
-    Get-Process GameShortcut -ErrorAction SilentlyContinue | Stop-Process -Force
+    Get-Process MonitorTVSwitcher, GameShortcut -ErrorAction SilentlyContinue | Stop-Process -Force
     if (Test-Path -LiteralPath $PublishDir) {
         Remove-Item -LiteralPath $PublishDir -Recurse -Force
     }
@@ -116,7 +116,7 @@ if (-not $SkipPublish) {
     }
 }
 
-$exe = Join-Path $PublishDir "GameShortcut.exe"
+$exe = Join-Path $PublishDir "MonitorTVSwitcher.exe"
 if (-not (Test-Path -LiteralPath $exe)) {
     throw "Published app not found at $exe. Run without -SkipPublish."
 }

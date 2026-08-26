@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameShortcut.Models;
+using MonitorTVSwitcher.Models;
 
-namespace GameShortcut.Services;
+namespace MonitorTVSwitcher.Services;
 
 internal static class SettingsStore
 {
@@ -13,10 +13,7 @@ internal static class SettingsStore
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public static string FilePath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "GameShortcut",
-        "settings.json");
+    public static string FilePath { get; } = Path.Combine(AppInfo.AppDataDirectory, "settings.json");
 
     public static AppSettings Load()
     {

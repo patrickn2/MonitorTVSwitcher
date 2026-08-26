@@ -1,4 +1,4 @@
-namespace GameShortcut.Models;
+namespace MonitorTVSwitcher.Models;
 
 public sealed class AppSettings
 {

@@ -1,7 +1,7 @@
-using GameShortcut.Models;
+using MonitorTVSwitcher.Models;
 using Vortice.DirectInput;
 
-namespace GameShortcut.Services;
+namespace MonitorTVSwitcher.Services;
 
 internal sealed class JoystickWatcher : IDisposable
 {

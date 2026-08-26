@@ -1,4 +1,4 @@
-namespace GameShortcut;
+namespace MonitorTVSwitcher;
 
 static class Program
 {
@@ -7,6 +7,8 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        AppInfo.EnsureAppDataMigrated();
+
         if (args.Length >= 2 && args[0] == "--switch-to")
         {
             ApplicationConfiguration.Initialize();

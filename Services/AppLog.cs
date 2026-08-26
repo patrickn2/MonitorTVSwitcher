@@ -1,11 +1,8 @@
-namespace GameShortcut.Services;
+namespace MonitorTVSwitcher.Services;
 
 internal static class AppLog
 {
-    public static string FilePath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "GameShortcut",
-        "switch.log");
+    public static string FilePath { get; } = Path.Combine(AppInfo.AppDataDirectory, "switch.log");
 
     public static void Write(string message)
     {

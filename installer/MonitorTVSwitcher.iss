@@ -1,11 +1,11 @@
 #define MyAppName "Monitor/TV Switcher"
 #define MyAppNameSafe "Monitor TV Switcher"
 #define MyAppPublisher "Monitor/TV Switcher"
-#define MyAppExeName "GameShortcut.exe"
+#define MyAppExeName "MonitorTVSwitcher.exe"
 #define MyAppMutex "Local\MonitorTVSwitcher.SingleInstance"
 
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.0"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\artifacts\publish"
