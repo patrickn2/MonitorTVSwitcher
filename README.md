@@ -4,6 +4,16 @@ A Windows tray app that switches your PC between a **monitor** and a **TV** from
 
 **Requirements:** Windows 10 or 11, 64-bit. No .NET install is required.
 
+## Screenshots
+
+<p>
+  <img src="Assets/screenshot-settings.png" alt="Settings window: joystick trigger, display roles, and sound" width="560">
+</p>
+
+<p>
+  <img src="Assets/screenshot-tray.png" alt="Tray menu to switch between monitor and TV" width="280">
+</p>
+
 ## Download 1.0
 
 - **[Installer (recommended)](https://github.com/patrickn2/MonitorTVSwitcher/releases/download/v1.0/MonitorTVSwitcher-Setup-1.0.exe)** — `MonitorTVSwitcher-Setup-1.0.exe`
