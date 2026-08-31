@@ -7,12 +7,31 @@ internal sealed class SettingsForm : Form
 {
     private readonly JoystickWatcher _joystick;
     private readonly DisplaySwitchService _switcher;
+    private readonly GamepadMouseService _mouse;
     private AppSettings _settings;
 
     private readonly RadioButton _chordRadio = new() { Text = "Combination (hold together)", AutoSize = true };
     private readonly RadioButton _sequenceRadio = new() { Text = "Sequence (press in order)", AutoSize = true };
     private readonly Label _bindingLabel = new() { AutoSize = true, MaximumSize = new Size(480, 0) };
     private readonly Button _recordButton = new() { Text = "Record", AutoSize = true };
+    private readonly RadioButton _mouseChordRadio = new() { Text = "Combination (hold together)", AutoSize = true };
+    private readonly RadioButton _mouseSequenceRadio = new() { Text = "Sequence (press in order)", AutoSize = true };
+    private readonly Label _mouseBindingLabel = new() { AutoSize = true, MaximumSize = new Size(480, 0) };
+    private readonly Button _mouseRecordButton = new() { Text = "Record", AutoSize = true };
+    private readonly Label _leftClickLabel = new() { AutoSize = true };
+    private readonly Button _leftClickRecordButton = new() { Text = "Record", AutoSize = true };
+    private readonly Label _rightClickLabel = new() { AutoSize = true };
+    private readonly Button _rightClickRecordButton = new() { Text = "Record", AutoSize = true };
+    private readonly Label _speedLabel = new() { AutoSize = true, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly TrackBar _speedBar = new()
+    {
+        Minimum = 1,
+        Maximum = 100,
+        TickFrequency = 10,
+        Width = 220,
+        AutoSize = true
+    };
+    private readonly Button _mouseTestButton = new() { Text = "Test mouse", AutoSize = true };
     private readonly CheckBox _startWithWindows = new() { Text = "Start with Windows", AutoSize = true };
     private readonly TableLayoutPanel _displayTable = new()
     {
@@ -23,10 +42,17 @@ internal sealed class SettingsForm : Form
     private readonly Label _statusLabel = new() { AutoEllipsis = true, Dock = DockStyle.Fill };
     private bool _suppressEvents;
 
-    public SettingsForm(JoystickWatcher joystick, DisplaySwitchService switcher, AppSettings settings)
+    private const int WmClose = 0x0010;
+    private const int WmSysCommand = 0x0112;
+    private const int WmNcLButtonDown = 0x00A1;
+    private const int ScClose = 0xF060;
+    private const int HtClose = 20;
+
+    public SettingsForm(JoystickWatcher joystick, DisplaySwitchService switcher, GamepadMouseService mouse, AppSettings settings)
     {
         _joystick = joystick;
         _switcher = switcher;
+        _mouse = mouse;
         _settings = settings;
 
         Text = AppInfo.DisplayName;
@@ -35,7 +61,7 @@ internal sealed class SettingsForm : Form
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(560, 520);
+        ClientSize = new Size(560, 760);
         Font = new Font("Segoe UI", 9F);
         ShowInTaskbar = true;
         Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Application.ExecutablePath);
@@ -44,9 +70,10 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 5,
+            RowCount = 6,
             Padding = new Padding(12)
         };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -54,19 +81,18 @@ internal sealed class SettingsForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
 
         root.Controls.Add(BuildTriggerGroup(), 0, 0);
-        root.Controls.Add(_startWithWindows, 0, 1);
-        root.Controls.Add(BuildDisplayGroup(), 0, 2);
-        root.Controls.Add(_statusLabel, 0, 3);
+        root.Controls.Add(BuildMouseGroup(), 0, 1);
+        root.Controls.Add(_startWithWindows, 0, 2);
+        root.Controls.Add(BuildDisplayGroup(), 0, 3);
+        root.Controls.Add(_statusLabel, 0, 4);
 
-        var close = new Button { Text = "Close", DialogResult = DialogResult.OK, AutoSize = true, Anchor = AnchorStyles.Right };
-        close.Click += (_, _) => Close();
+        var close = new Button { Text = "Close", AutoSize = true, Anchor = AnchorStyles.Right };
+        close.Click += (_, _) => ScheduleHide();
         var closeHost = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, AutoSize = true };
         closeHost.Controls.Add(close);
-        root.Controls.Add(closeHost, 0, 4);
+        root.Controls.Add(closeHost, 0, 5);
 
         Controls.Add(root);
-        AcceptButton = close;
-        CancelButton = close;
 
         _chordRadio.CheckedChanged += (_, _) =>
         {
@@ -88,7 +114,43 @@ internal sealed class SettingsForm : Form
             _settings.TriggerKind = TriggerKind.Sequence;
             Save();
         };
-        _recordButton.Click += (_, _) => ToggleRecord();
+        _recordButton.Click += (_, _) => ToggleRecord(RecordTarget.DisplaySwitch);
+        _mouseChordRadio.CheckedChanged += (_, _) =>
+        {
+            if (_suppressEvents || !_mouseChordRadio.Checked)
+            {
+                return;
+            }
+
+            _settings.MouseTriggerKind = TriggerKind.Chord;
+            Save();
+        };
+        _mouseSequenceRadio.CheckedChanged += (_, _) =>
+        {
+            if (_suppressEvents || !_mouseSequenceRadio.Checked)
+            {
+                return;
+            }
+
+            _settings.MouseTriggerKind = TriggerKind.Sequence;
+            Save();
+        };
+        _mouseRecordButton.Click += (_, _) => ToggleRecord(RecordTarget.Mouse);
+        _leftClickRecordButton.Click += (_, _) => ToggleRecord(RecordTarget.LeftClick);
+        _rightClickRecordButton.Click += (_, _) => ToggleRecord(RecordTarget.RightClick);
+        _speedBar.ValueChanged += (_, _) =>
+        {
+            if (_suppressEvents)
+            {
+                return;
+            }
+
+            _settings.MouseSpeed = _speedBar.Value;
+            _mouse.Speed = _settings.MouseSpeed;
+            UpdateSpeedLabel();
+            Save();
+        };
+        _mouseTestButton.Click += (_, _) => ToggleMouseTest();
         _startWithWindows.CheckedChanged += (_, _) =>
         {
             if (_suppressEvents)
@@ -114,20 +176,99 @@ internal sealed class SettingsForm : Form
         _joystick.BindingCaptured += OnBindingCaptured;
         _joystick.DevicesChanged += UpdateStatus;
         _switcher.StatusChanged += OnSwitcherStatus;
+        _mouse.EnabledChanged += OnMouseEnabledChanged;
+        FormClosing += OnSettingsFormClosing;
         FormClosed += (_, _) =>
         {
             _joystick.BindingCaptured -= OnBindingCaptured;
             _joystick.DevicesChanged -= UpdateStatus;
             _switcher.StatusChanged -= OnSwitcherStatus;
+            _mouse.EnabledChanged -= OnMouseEnabledChanged;
             if (_joystick.IsRecording)
             {
-                _joystick.StopRecord();
+                _joystick.CancelRecord();
             }
         };
 
         LoadValues();
         RebuildDisplayRows();
         UpdateStatus();
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        // Title-bar clicks run a nested DefWindowProc loop that waits for mouse-up.
+        // Gamepad LMB is injected with SendInput on this same UI thread, so that
+        // loop never sees mouse-up until a real mouse click. Hide on NC-down instead.
+        if (m.Msg == WmNcLButtonDown)
+        {
+            int hit = (int)m.WParam;
+            if (hit == HtClose)
+            {
+                AppLog.Write("Settings title-bar X click; hiding without title-bar mouse track.");
+                HideSettings();
+                return;
+            }
+
+            if (_mouse.Enabled)
+            {
+                AppLog.Write($"Settings title-bar click ignored hit={hit} (gamepad mouse on)");
+                return;
+            }
+        }
+
+        if (m.Msg == WmClose
+            || (m.Msg == WmSysCommand && ((int)m.WParam & 0xFFF0) == ScClose))
+        {
+            AppLog.Write($"Settings close intercepted msg=0x{m.Msg:X}");
+            HideSettings();
+            return;
+        }
+
+        base.WndProc(ref m);
+    }
+
+    private void OnSettingsFormClosing(object? sender, FormClosingEventArgs e)
+    {
+        if (e.CloseReason is CloseReason.WindowsShutDown
+            or CloseReason.TaskManagerClosing
+            or CloseReason.ApplicationExitCall)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        AppLog.Write($"Settings closing canceled reason={e.CloseReason}");
+        HideSettings();
+    }
+
+    private void ScheduleHide()
+    {
+        HideSettings();
+    }
+
+    private void HideSettings()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (_joystick.IsRecording)
+        {
+            _joystick.CancelRecord();
+            ResetRecordButtons();
+            UpdateBindingLabel();
+            UpdateMouseBindingLabel();
+            UpdateClickLabels();
+        }
+
+        // The X click is a gamepad LMB via SendInput. If poll drops for a frame,
+        // LeftUp never goes out and the pointer looks dead. Release first.
+        _mouse.ReleaseButtons();
+        Hide();
+        _joystick.Reacquire();
+        AppLog.Write($"Settings hidden; gamepad mouse enabled={_mouse.Enabled}");
     }
 
     private Control BuildTriggerGroup()
@@ -155,6 +296,62 @@ internal sealed class SettingsForm : Form
         return group;
     }
 
+    private Control BuildMouseGroup()
+    {
+        var group = new GroupBox
+        {
+            Text = "Gamepad mouse control",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            Padding = new Padding(8)
+        };
+
+        var layout = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            AutoSize = true,
+            WrapContents = false
+        };
+        layout.Controls.Add(new Label
+        {
+            Text = "Left stick moves the pointer on any screen. Record which buttons click, then use Test mouse to try it.",
+            AutoSize = true,
+            MaximumSize = new Size(500, 0)
+        });
+        layout.Controls.Add(_mouseChordRadio);
+        layout.Controls.Add(_mouseSequenceRadio);
+        layout.Controls.Add(_mouseBindingLabel);
+        layout.Controls.Add(_mouseRecordButton);
+        layout.Controls.Add(BuildClickRow("Left click (LMB)", _leftClickLabel, _leftClickRecordButton));
+        layout.Controls.Add(BuildClickRow("Right click (RMB)", _rightClickLabel, _rightClickRecordButton));
+        layout.Controls.Add(_speedLabel);
+        layout.Controls.Add(_speedBar);
+        layout.Controls.Add(_mouseTestButton);
+        group.Controls.Add(layout);
+        return group;
+    }
+
+    private static Control BuildClickRow(string caption, Label value, Button record)
+    {
+        var row = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(0, 4, 0, 0)
+        };
+        row.Controls.Add(new Label
+        {
+            Text = caption + ":",
+            AutoSize = true,
+            Padding = new Padding(0, 6, 8, 0)
+        });
+        row.Controls.Add(value);
+        row.Controls.Add(record);
+        return row;
+    }
+
     private Control BuildDisplayGroup()
     {
         var group = new GroupBox
@@ -179,10 +376,17 @@ internal sealed class SettingsForm : Form
         _suppressEvents = true;
         _chordRadio.Checked = _settings.TriggerKind == TriggerKind.Chord;
         _sequenceRadio.Checked = _settings.TriggerKind == TriggerKind.Sequence;
+        _mouseChordRadio.Checked = _settings.MouseTriggerKind == TriggerKind.Chord;
+        _mouseSequenceRadio.Checked = _settings.MouseTriggerKind == TriggerKind.Sequence;
+        _speedBar.Value = Math.Clamp(_settings.MouseSpeed, 1, 100);
         _startWithWindows.Checked = StartupService.IsEnabled();
         _settings.StartWithWindows = _startWithWindows.Checked;
         _suppressEvents = false;
         UpdateBindingLabel();
+        UpdateMouseBindingLabel();
+        UpdateClickLabels();
+        UpdateSpeedLabel();
+        UpdateMouseTestButton();
     }
 
     private void RebuildDisplayRows()
@@ -265,9 +469,20 @@ internal sealed class SettingsForm : Form
             {
                 Text = "Switch",
                 AutoSize = true,
-                Tag = display.DevicePath
+                Tag = display.DevicePath,
+                Enabled = !_mouse.Enabled
             };
-            switchButton.Click += (_, _) => _switcher.SwitchTo((string)switchButton.Tag!);
+            switchButton.Click += (_, _) =>
+            {
+                if (_mouse.Enabled)
+                {
+                    AppLog.Write("Settings Switch ignored: gamepad mouse is on.");
+                    return;
+                }
+
+                AppLog.Write($"Settings Switch clicked {display.MenuLabel}");
+                _switcher.SwitchTo((string)switchButton.Tag!);
+            };
 
             _displayTable.Controls.Add(name, 0, row);
             _displayTable.Controls.Add(role, 1, row);
@@ -334,19 +549,63 @@ internal sealed class SettingsForm : Form
         Save();
     }
 
-    private void ToggleRecord()
+    private void ToggleRecord(RecordTarget target)
     {
-        if (_joystick.IsRecording)
+        if (_joystick.IsRecording && _joystick.RecordTarget == target)
         {
             _joystick.StopRecord();
             return;
         }
 
-        _recordButton.Text = "Stop";
-        _bindingLabel.Text = _settings.TriggerKind == TriggerKind.Chord
-            ? "Hold the buttons, then release…"
-            : "Press the buttons in order…";
-        _joystick.BeginRecord(_settings.TriggerKind);
+        if (_joystick.IsRecording)
+        {
+            _joystick.CancelRecord();
+            ResetRecordButtons();
+            UpdateBindingLabel();
+            UpdateMouseBindingLabel();
+            UpdateClickLabels();
+        }
+
+        TriggerKind kind;
+        Button recordButton;
+        Label bindingLabel;
+        string prompt;
+        if (target == RecordTarget.Mouse)
+        {
+            kind = _settings.MouseTriggerKind;
+            recordButton = _mouseRecordButton;
+            bindingLabel = _mouseBindingLabel;
+            prompt = kind == TriggerKind.Chord
+                ? "Hold the buttons, then release…"
+                : "Press the buttons in order…";
+        }
+        else if (target == RecordTarget.LeftClick)
+        {
+            kind = TriggerKind.Sequence;
+            recordButton = _leftClickRecordButton;
+            bindingLabel = _leftClickLabel;
+            prompt = "Press a button…";
+        }
+        else if (target == RecordTarget.RightClick)
+        {
+            kind = TriggerKind.Sequence;
+            recordButton = _rightClickRecordButton;
+            bindingLabel = _rightClickLabel;
+            prompt = "Press a button…";
+        }
+        else
+        {
+            kind = _settings.TriggerKind;
+            recordButton = _recordButton;
+            bindingLabel = _bindingLabel;
+            prompt = kind == TriggerKind.Chord
+                ? "Hold the buttons, then release…"
+                : "Press the buttons in order…";
+        }
+
+        recordButton.Text = "Stop";
+        bindingLabel.Text = prompt;
+        _joystick.BeginRecord(kind, target);
     }
 
     private void OnBindingCaptured(IReadOnlyList<int> buttons)
@@ -358,9 +617,32 @@ internal sealed class SettingsForm : Form
 
         BeginInvoke(() =>
         {
-            _settings.Buttons = buttons.ToList();
-            _recordButton.Text = "Record";
+            switch (_joystick.RecordTarget)
+            {
+                case RecordTarget.Mouse:
+                    _settings.MouseButtons = buttons.ToList();
+                    break;
+                case RecordTarget.LeftClick:
+                    if (buttons.Count > 0)
+                    {
+                        _settings.MouseLeftButton = buttons[0];
+                    }
+                    break;
+                case RecordTarget.RightClick:
+                    if (buttons.Count > 0)
+                    {
+                        _settings.MouseRightButton = buttons[0];
+                    }
+                    break;
+                default:
+                    _settings.Buttons = buttons.ToList();
+                    break;
+            }
+
+            ResetRecordButtons();
             UpdateBindingLabel();
+            UpdateMouseBindingLabel();
+            UpdateClickLabels();
             Save();
         });
     }
@@ -370,6 +652,70 @@ internal sealed class SettingsForm : Form
     private void UpdateBindingLabel()
     {
         _bindingLabel.Text = FormatBinding(_settings.TriggerKind, _settings.Buttons);
+    }
+
+    private void UpdateMouseBindingLabel()
+    {
+        _mouseBindingLabel.Text = FormatBinding(_settings.MouseTriggerKind, _settings.MouseButtons);
+    }
+
+    private void UpdateClickLabels()
+    {
+        _leftClickLabel.Text = FormatButton(_settings.MouseLeftButton);
+        _rightClickLabel.Text = FormatButton(_settings.MouseRightButton);
+    }
+
+    private void UpdateSpeedLabel()
+    {
+        _speedLabel.Text = $"Pointer speed: {_speedBar.Value}";
+    }
+
+    private void UpdateMouseTestButton()
+    {
+        _mouseTestButton.Text = _mouse.Enabled ? "Stop mouse" : "Test mouse";
+    }
+
+    private void OnMouseEnabledChanged(bool _)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnMouseEnabledChanged(_));
+            return;
+        }
+
+        UpdateMouseTestButton();
+        UpdateSwitchButtons();
+    }
+
+    private void UpdateSwitchButtons()
+    {
+        foreach (Control control in _displayTable.Controls)
+        {
+            if (control is Button switchButton && switchButton.Tag is string)
+            {
+                switchButton.Enabled = !_mouse.Enabled;
+            }
+        }
+    }
+
+    private void ToggleMouseTest()
+    {
+        _mouse.Speed = _settings.MouseSpeed;
+        _mouse.Enabled = !_mouse.Enabled;
+        UpdateMouseTestButton();
+    }
+
+    private void ResetRecordButtons()
+    {
+        _recordButton.Text = "Record";
+        _mouseRecordButton.Text = "Record";
+        _leftClickRecordButton.Text = "Record";
+        _rightClickRecordButton.Text = "Record";
     }
 
     private void UpdateStatus()
@@ -393,8 +739,15 @@ internal sealed class SettingsForm : Form
 
     private void Save()
     {
+        _settings.MouseSpeed = Math.Clamp(_settings.MouseSpeed, 1, 100);
+        _mouse.Speed = _settings.MouseSpeed;
         SettingsStore.Save(_settings);
         _joystick.CurrentSettings = _settings;
+    }
+
+    private static string FormatButton(int index)
+    {
+        return index < 0 ? "(not set)" : $"Button {index + 1}";
     }
 
     public static string FormatBinding(TriggerKind kind, IReadOnlyList<int> buttons)

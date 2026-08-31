@@ -14,6 +14,7 @@ internal sealed class DisplaySwitchService
 
     public event Action? BusyChanged;
     public event Action<string>? StatusChanged;
+    public event Action<DisplayRole>? ExclusiveRoleChanged;
 
     public bool IsBusy => Volatile.Read(ref _busy) != 0;
     public string LastStatus { get; private set; } = "Ready.";
@@ -30,6 +31,7 @@ internal sealed class DisplaySwitchService
             return;
         }
 
+        AppLog.Write($"Joystick display toggle → {target.MenuLabel}");
         SwitchTo(target.DevicePath);
     }
 
@@ -111,6 +113,7 @@ internal sealed class DisplaySwitchService
 
         ApplyModeHdrAndAudio(refreshed, settings);
         SettingsStore.Save(settings);
+        ExclusiveRoleChanged?.Invoke(DisplayClassifier.Resolve(refreshed, settings));
         SetStatus($"Switched to {refreshed.MenuLabel}.");
     }
 

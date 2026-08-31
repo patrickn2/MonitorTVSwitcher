@@ -45,6 +45,19 @@ The app stays in the notification area.
 - **Tray menu** — pick a display by name.
 - **Settings** — mark each screen as Auto, TV, or Monitor, and optionally pin a sound device to that screen.
 
+### Gamepad mouse control
+
+A second recorded joystick shortcut (combination or sequence, same as the display switch) toggles mouse mode on any screen:
+
+- **Left stick** moves the pointer.
+- Record which buttons are **left click** and **right click** (hold to drag).
+- **Pointer speed** is adjustable in Settings.
+- **Test mouse** in Settings turns the pointer on immediately so you can try stick, clicks, and speed.
+- The same shortcut turns it off.
+- While mouse mode is on, the click buttons are not used for the display-switch shortcut, and Settings Switch buttons stay disabled so a mis-click cannot change display.
+
+Record the mouse shortcut and click buttons in **Settings → Gamepad mouse control**.
+
 When you switch:
 
 1. The chosen display becomes the only active screen.

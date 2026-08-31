@@ -18,8 +18,14 @@ internal sealed class JoystickWatcher : IDisposable
 
     private bool _disposed;
     private bool _armed = true;
+    private bool _mouseArmed = true;
     private int _sequenceIndex;
+    private int _mouseSequenceIndex;
     private DateTime _lastSequenceAt = DateTime.MinValue;
+    private DateTime _lastMouseSequenceAt = DateTime.MinValue;
+    private DateTime _lastEmptyPollLog = DateTime.MinValue;
+
+    private readonly List<int> _recordButtons = [];
 
     public JoystickWatcher(IntPtr hwnd)
     {
@@ -31,13 +37,16 @@ internal sealed class JoystickWatcher : IDisposable
     }
 
     public event Action? Triggered;
+    public event Action? MouseToggleRequested;
     public event Action<IReadOnlyList<int>>? BindingCaptured;
     public event Action? DevicesChanged;
 
     public bool IsBusy { get; set; }
     public bool IsRecording { get; private set; }
     public TriggerKind RecordKind { get; private set; } = TriggerKind.Chord;
+    public RecordTarget RecordTarget { get; private set; } = RecordTarget.DisplaySwitch;
     public IReadOnlyList<string> ConnectedNames { get; private set; } = [];
+    public GamepadMouseService? Mouse { get; set; }
 
     public AppSettings CurrentSettings { get; set; } = new();
 
@@ -57,14 +66,43 @@ internal sealed class JoystickWatcher : IDisposable
         _rescanTimer.Start();
     }
 
-    public void BeginRecord(TriggerKind kind)
+    public void Reacquire()
+    {
+        lock (_gate)
+        {
+            foreach (var tracked in _devices)
+            {
+                try
+                {
+                    tracked.Device.Acquire();
+                }
+                catch
+                {
+                    // Keep the existing device; the next poll will retry Acquire.
+                }
+            }
+        }
+    }
+
+    public void BeginRecord(TriggerKind kind, RecordTarget target)
     {
         lock (_gate)
         {
             IsRecording = true;
             RecordKind = kind;
+            RecordTarget = target;
             _recordButtons.Clear();
             _sequenceIndex = 0;
+            _mouseSequenceIndex = 0;
+        }
+    }
+
+    public void CancelRecord()
+    {
+        lock (_gate)
+        {
+            IsRecording = false;
+            _recordButtons.Clear();
         }
     }
 
@@ -85,7 +123,9 @@ internal sealed class JoystickWatcher : IDisposable
         lock (_gate)
         {
             _sequenceIndex = 0;
+            _mouseSequenceIndex = 0;
             _lastSequenceAt = DateTime.MinValue;
+            _lastMouseSequenceAt = DateTime.MinValue;
         }
     }
 
@@ -120,6 +160,11 @@ internal sealed class JoystickWatcher : IDisposable
         bool changed = false;
         lock (_gate)
         {
+            if (instances.Count == 0 && _devices.Count > 0)
+            {
+                return;
+            }
+
             var current = _devices.Select(d => d.Guid).ToHashSet();
             var next = instances.Keys.ToHashSet();
             if (!current.SetEquals(next))
@@ -171,11 +216,9 @@ internal sealed class JoystickWatcher : IDisposable
         }
     }
 
-    private readonly List<int> _recordButtons = [];
-
     private void Poll()
     {
-        List<(Guid Guid, bool[] Buttons)> snapshots = [];
+        List<DeviceSnapshot> snapshots = [];
         lock (_gate)
         {
             foreach (var tracked in _devices.ToList())
@@ -184,21 +227,30 @@ internal sealed class JoystickWatcher : IDisposable
                 {
                     tracked.Device.Poll();
                     var state = tracked.Device.GetCurrentJoystickState();
-                    snapshots.Add((tracked.Guid, (bool[])state.Buttons.Clone()));
+                    snapshots.Add(new DeviceSnapshot(
+                        tracked.Guid,
+                        (bool[])state.Buttons.Clone(),
+                        state.X,
+                        state.Y));
                 }
-                catch
+                catch (Exception ex)
                 {
+                    if ((DateTime.Now - _lastEmptyPollLog).TotalSeconds >= 1)
+                    {
+                        _lastEmptyPollLog = DateTime.Now;
+                        AppLog.Write($"DirectInput poll failed: {ex.Message}");
+                    }
+
                     try
                     {
                         tracked.Device.Acquire();
                     }
-                    catch
+                    catch (Exception acquireEx)
                     {
-                        tracked.Dispose();
-                        _devices.Remove(tracked);
-                        _previousButtons.Remove(tracked.Guid);
-                        ConnectedNames = _devices.Select(d => d.Name).ToList();
-                        DevicesChanged?.Invoke();
+                        if ((DateTime.Now - _lastEmptyPollLog).TotalSeconds >= 1)
+                        {
+                            AppLog.Write($"DirectInput acquire failed: {acquireEx.Message}");
+                        }
                     }
                 }
             }
@@ -206,6 +258,13 @@ internal sealed class JoystickWatcher : IDisposable
 
         if (snapshots.Count == 0)
         {
+            if (Mouse is { Enabled: true } && (DateTime.Now - _lastEmptyPollLog).TotalSeconds >= 1)
+            {
+                _lastEmptyPollLog = DateTime.Now;
+                AppLog.Write("Gamepad poll produced no snapshots while mouse enabled; reacquiring.");
+                Reacquire();
+            }
+
             return;
         }
 
@@ -219,30 +278,104 @@ internal sealed class JoystickWatcher : IDisposable
         if (IsBusy)
         {
             ResetSequence();
+            Mouse?.ReleaseButtons();
             StorePrevious(snapshots);
             return;
         }
 
         var settings = CurrentSettings;
-        if (settings.Buttons.Count == 0)
+        bool mouseEnabled = Mouse is { Enabled: true };
+
+        var toggleSnapshots = mouseEnabled
+            ? WithoutClickButtons(snapshots)
+            : snapshots;
+
+        bool mouseToggled = TryTrigger(
+            settings.MouseButtons,
+            settings.MouseTriggerKind,
+            toggleSnapshots,
+            ref _mouseArmed,
+            ref _mouseSequenceIndex,
+            ref _lastMouseSequenceAt,
+            MouseToggleRequested);
+
+        if (mouseEnabled)
         {
+            ApplyMouse(snapshots);
+        }
+
+        if (mouseToggled)
+        {
+            _sequenceIndex = 0;
+            _lastSequenceAt = DateTime.MinValue;
             StorePrevious(snapshots);
             return;
         }
 
-        if (settings.TriggerKind == TriggerKind.Chord)
-        {
-            HandleChord(settings.Buttons, snapshots);
-        }
-        else
-        {
-            HandleSequence(settings.Buttons, snapshots);
-        }
+        var displaySnapshots = mouseEnabled
+            ? WithoutClickButtons(snapshots)
+            : snapshots;
+
+        TryTrigger(
+            settings.Buttons,
+            settings.TriggerKind,
+            displaySnapshots,
+            ref _armed,
+            ref _sequenceIndex,
+            ref _lastSequenceAt,
+            Triggered);
 
         StorePrevious(snapshots);
     }
 
-    private void HandleRecording(List<(Guid Guid, bool[] Buttons)> snapshots)
+    private void ApplyMouse(List<DeviceSnapshot> snapshots)
+    {
+        if (Mouse is null)
+        {
+            return;
+        }
+
+        int bestX = 32767;
+        int bestY = 32767;
+        float bestMagnitude = -1f;
+        int leftButton = CurrentSettings.MouseLeftButton;
+        int rightButton = CurrentSettings.MouseRightButton;
+        bool leftDown = false;
+        bool rightDown = false;
+
+        foreach (var snapshot in snapshots)
+        {
+            float nx = NormalizeAxis(snapshot.X);
+            float ny = NormalizeAxis(snapshot.Y);
+            float magnitude = MathF.Sqrt((nx * nx) + (ny * ny));
+            if (magnitude > bestMagnitude)
+            {
+                bestMagnitude = magnitude;
+                bestX = snapshot.X;
+                bestY = snapshot.Y;
+            }
+
+            if (IsButtonDown(snapshot.Buttons, leftButton))
+            {
+                leftDown = true;
+            }
+
+            if (IsButtonDown(snapshot.Buttons, rightButton))
+            {
+                rightDown = true;
+            }
+        }
+
+        Mouse.Speed = CurrentSettings.MouseSpeed;
+        Mouse.Apply(bestX, bestY, leftDown, rightDown);
+    }
+
+    private static float NormalizeAxis(int value)
+    {
+        return Math.Clamp((value - 32767) / 32767f, -1f, 1f);
+    }
+
+    private void HandleRecording(List<DeviceSnapshot> snapshots)
     {
         foreach (var snapshot in snapshots)
         {
@@ -253,6 +386,14 @@ internal sealed class JoystickWatcher : IDisposable
                 bool isDown = snapshot.Buttons[i];
                 if (isDown && !wasDown)
                 {
+                    if (RecordTarget is RecordTarget.LeftClick or RecordTarget.RightClick)
+                    {
+                        _recordButtons.Clear();
+                        _recordButtons.Add(i);
+                        StopRecord();
+                        return;
+                    }
+
                     if (RecordKind == TriggerKind.Chord)
                     {
                         if (!_recordButtons.Contains(i))
@@ -283,28 +424,61 @@ internal sealed class JoystickWatcher : IDisposable
         }
     }
 
-    private void HandleChord(IReadOnlyList<int> buttons, List<(Guid Guid, bool[] Buttons)> snapshots)
+    private bool TryTrigger(
+        IReadOnlyList<int> buttons,
+        TriggerKind kind,
+        List<DeviceSnapshot> snapshots,
+        ref bool armed,
+        ref int sequenceIndex,
+        ref DateTime lastSequenceAt,
+        Action? handler)
+    {
+        if (buttons.Count == 0)
+        {
+            return false;
+        }
+
+        if (kind == TriggerKind.Chord)
+        {
+            return UpdateChord(buttons, snapshots, ref armed, handler);
+        }
+
+        return UpdateSequence(buttons, snapshots, ref sequenceIndex, ref lastSequenceAt, handler);
+    }
+
+    private static bool UpdateChord(
+        IReadOnlyList<int> buttons,
+        List<DeviceSnapshot> snapshots,
+        ref bool armed,
+        Action? handler)
     {
         bool down = snapshots.Any(s => buttons.All(b => b >= 0 && b < s.Buttons.Length && s.Buttons[b]));
         if (down)
         {
-            if (_armed)
+            if (armed)
             {
-                _armed = false;
-                Triggered?.Invoke();
+                armed = false;
+                handler?.Invoke();
+                return true;
             }
+
+            return false;
         }
-        else
-        {
-            _armed = true;
-        }
+
+        armed = true;
+        return false;
     }
 
-    private void HandleSequence(IReadOnlyList<int> buttons, List<(Guid Guid, bool[] Buttons)> snapshots)
+    private bool UpdateSequence(
+        IReadOnlyList<int> buttons,
+        List<DeviceSnapshot> snapshots,
+        ref int sequenceIndex,
+        ref DateTime lastSequenceAt,
+        Action? handler)
     {
-        if (_sequenceIndex > 0 && (DateTime.UtcNow - _lastSequenceAt).TotalMilliseconds >= SequenceTimeoutMs)
+        if (sequenceIndex > 0 && (DateTime.UtcNow - lastSequenceAt).TotalMilliseconds >= SequenceTimeoutMs)
         {
-            _sequenceIndex = 0;
+            sequenceIndex = 0;
         }
 
         var presses = new List<int>();
@@ -323,34 +497,65 @@ internal sealed class JoystickWatcher : IDisposable
 
         foreach (int pressed in presses)
         {
-            if (pressed == buttons[_sequenceIndex])
+            if (pressed == buttons[sequenceIndex])
             {
-                _sequenceIndex++;
-                _lastSequenceAt = DateTime.UtcNow;
-                if (_sequenceIndex >= buttons.Count)
+                sequenceIndex++;
+                lastSequenceAt = DateTime.UtcNow;
+                if (sequenceIndex >= buttons.Count)
                 {
-                    _sequenceIndex = 0;
-                    Triggered?.Invoke();
-                    return;
+                    sequenceIndex = 0;
+                    handler?.Invoke();
+                    return true;
                 }
             }
             else
             {
-                _sequenceIndex = pressed == buttons[0] ? 1 : 0;
-                if (_sequenceIndex == 1)
+                sequenceIndex = pressed == buttons[0] ? 1 : 0;
+                if (sequenceIndex == 1)
                 {
-                    _lastSequenceAt = DateTime.UtcNow;
+                    lastSequenceAt = DateTime.UtcNow;
                 }
             }
         }
+
+        return false;
     }
 
-    private static bool AnyBoundDown(IReadOnlyList<int> buttons, List<(Guid Guid, bool[] Buttons)> snapshots)
+    private static bool AnyBoundDown(IReadOnlyList<int> buttons, List<DeviceSnapshot> snapshots)
     {
         return snapshots.Any(s => buttons.Any(b => b >= 0 && b < s.Buttons.Length && s.Buttons[b]));
     }
 
-    private void StorePrevious(List<(Guid Guid, bool[] Buttons)> snapshots)
+    private static bool IsButtonDown(bool[] buttons, int index)
+    {
+        return index >= 0 && index < buttons.Length && buttons[index];
+    }
+
+    private List<DeviceSnapshot> WithoutClickButtons(List<DeviceSnapshot> snapshots)
+    {
+        int left = CurrentSettings.MouseLeftButton;
+        int right = CurrentSettings.MouseRightButton;
+        var filtered = new List<DeviceSnapshot>(snapshots.Count);
+        foreach (var snapshot in snapshots)
+        {
+            var buttons = (bool[])snapshot.Buttons.Clone();
+            if (left >= 0 && left < buttons.Length)
+            {
+                buttons[left] = false;
+            }
+
+            if (right >= 0 && right < buttons.Length)
+            {
+                buttons[right] = false;
+            }
+
+            filtered.Add(snapshot with { Buttons = buttons });
+        }
+
+        return filtered;
+    }
+
+    private void StorePrevious(List<DeviceSnapshot> snapshots)
     {
         foreach (var snapshot in snapshots)
         {
@@ -370,6 +575,7 @@ internal sealed class JoystickWatcher : IDisposable
         _pollTimer.Dispose();
         _rescanTimer.Stop();
         _rescanTimer.Dispose();
+        Mouse?.ReleaseButtons();
 
         lock (_gate)
         {
@@ -383,6 +589,8 @@ internal sealed class JoystickWatcher : IDisposable
             _directInput = null;
         }
     }
+
+    private readonly record struct DeviceSnapshot(Guid Guid, bool[] Buttons, int X, int Y);
 
     private sealed class TrackedDevice(Guid guid, string name, IDirectInputDevice8 device) : IDisposable
     {
