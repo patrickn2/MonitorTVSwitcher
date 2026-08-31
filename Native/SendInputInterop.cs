@@ -14,6 +14,12 @@ internal static class SendInputInterop
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetCursorPos(int x, int y);
+
     public static void Move(int dx, int dy)
     {
         if (dx == 0 && dy == 0)
@@ -21,7 +27,12 @@ internal static class SendInputInterop
             return;
         }
 
-        Send(MouseMove, dx, dy);
+        if (!GetCursorPos(out POINT point))
+        {
+            return;
+        }
+
+        SetCursorPos(point.X + dx, point.Y + dy);
     }
 
     public static void LeftDown() => Send(MouseLeftDown);
@@ -51,6 +62,13 @@ internal static class SendInputInterop
     {
         [FieldOffset(0)]
         public MOUSEINPUT mouse;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
     }
 
     [StructLayout(LayoutKind.Sequential)]

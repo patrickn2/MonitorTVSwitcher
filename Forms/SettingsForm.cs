@@ -47,6 +47,12 @@ internal sealed class SettingsForm : Form
     private const int WmNcLButtonDown = 0x00A1;
     private const int ScClose = 0xF060;
     private const int HtClose = 20;
+    private const int HtCaption = 2;
+
+    private bool _movingForm;
+    private Point _moveCursorOrigin;
+    private Point _moveFormOrigin;
+    private readonly System.Windows.Forms.Timer _formMoveTimer = new() { Interval = 16 };
 
     public SettingsForm(JoystickWatcher joystick, DisplaySwitchService switcher, GamepadMouseService mouse, AppSettings settings)
     {
@@ -176,19 +182,24 @@ internal sealed class SettingsForm : Form
         _joystick.BindingCaptured += OnBindingCaptured;
         _joystick.DevicesChanged += UpdateStatus;
         _switcher.StatusChanged += OnSwitcherStatus;
+        _switcher.BusyChanged += OnSwitcherBusy;
         _mouse.EnabledChanged += OnMouseEnabledChanged;
         FormClosing += OnSettingsFormClosing;
         FormClosed += (_, _) =>
         {
+            _formMoveTimer.Stop();
+            _formMoveTimer.Dispose();
             _joystick.BindingCaptured -= OnBindingCaptured;
             _joystick.DevicesChanged -= UpdateStatus;
             _switcher.StatusChanged -= OnSwitcherStatus;
+            _switcher.BusyChanged -= OnSwitcherBusy;
             _mouse.EnabledChanged -= OnMouseEnabledChanged;
             if (_joystick.IsRecording)
             {
                 _joystick.CancelRecord();
             }
         };
+        _formMoveTimer.Tick += (_, _) => UpdateFormMove();
 
         LoadValues();
         RebuildDisplayRows();
@@ -207,6 +218,16 @@ internal sealed class SettingsForm : Form
             {
                 AppLog.Write("Settings title-bar X click; hiding without title-bar mouse track.");
                 HideSettings();
+                return;
+            }
+
+            if (hit == HtCaption && _mouse.Enabled)
+            {
+                _movingForm = true;
+                _moveCursorOrigin = Cursor.Position;
+                _moveFormOrigin = Location;
+                _formMoveTimer.Start();
+                AppLog.Write("Settings title-bar drag started.");
                 return;
             }
 
@@ -247,6 +268,27 @@ internal sealed class SettingsForm : Form
         HideSettings();
     }
 
+    private void UpdateFormMove()
+    {
+        if (!_movingForm)
+        {
+            _formMoveTimer.Stop();
+            return;
+        }
+
+        if (!_mouse.Enabled || (Control.MouseButtons & MouseButtons.Left) == 0)
+        {
+            _movingForm = false;
+            _formMoveTimer.Stop();
+            return;
+        }
+
+        Point now = Cursor.Position;
+        Location = new Point(
+            _moveFormOrigin.X + now.X - _moveCursorOrigin.X,
+            _moveFormOrigin.Y + now.Y - _moveCursorOrigin.Y);
+    }
+
     private void HideSettings()
     {
         if (IsDisposed)
@@ -263,6 +305,8 @@ internal sealed class SettingsForm : Form
             UpdateClickLabels();
         }
 
+        _movingForm = false;
+        _formMoveTimer.Stop();
         // The X click is a gamepad LMB via SendInput. If poll drops for a frame,
         // LeftUp never goes out and the pointer looks dead. Release first.
         _mouse.ReleaseButtons();
@@ -470,16 +514,10 @@ internal sealed class SettingsForm : Form
                 Text = "Switch",
                 AutoSize = true,
                 Tag = display.DevicePath,
-                Enabled = !_mouse.Enabled
+                Enabled = !_switcher.IsBusy
             };
             switchButton.Click += (_, _) =>
             {
-                if (_mouse.Enabled)
-                {
-                    AppLog.Write("Settings Switch ignored: gamepad mouse is on.");
-                    return;
-                }
-
                 AppLog.Write($"Settings Switch clicked {display.MenuLabel}");
                 _switcher.SwitchTo((string)switchButton.Tag!);
             };
@@ -649,6 +687,23 @@ internal sealed class SettingsForm : Form
 
     private void OnSwitcherStatus(string _) => UpdateStatus();
 
+    private void OnSwitcherBusy()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(OnSwitcherBusy);
+            return;
+        }
+
+        UpdateSwitchButtons();
+        UpdateStatus();
+    }
+
     private void UpdateBindingLabel()
     {
         _bindingLabel.Text = FormatBinding(_settings.TriggerKind, _settings.Buttons);
@@ -698,7 +753,7 @@ internal sealed class SettingsForm : Form
         {
             if (control is Button switchButton && switchButton.Tag is string)
             {
-                switchButton.Enabled = !_mouse.Enabled;
+                switchButton.Enabled = !_switcher.IsBusy;
             }
         }
     }

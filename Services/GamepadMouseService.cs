@@ -47,6 +47,9 @@ internal sealed class GamepadMouseService
         float nx = NormalizeAxis(x);
         float ny = NormalizeAxis(y);
         float magnitude = MathF.Sqrt((nx * nx) + (ny * ny));
+        SetButton(ref _leftDown, leftDown, SendInputInterop.LeftDown, SendInputInterop.LeftUp);
+        SetButton(ref _rightDown, rightDown, SendInputInterop.RightDown, SendInputInterop.RightUp);
+
         if (magnitude > Deadzone)
         {
             float scaled = (magnitude - Deadzone) / (1f - Deadzone);
@@ -57,9 +60,6 @@ internal sealed class GamepadMouseService
             int dy = (int)MathF.Round(ny / magnitude * speed);
             SendInputInterop.Move(dx, dy);
         }
-
-        SetButton(ref _leftDown, leftDown, SendInputInterop.LeftDown, SendInputInterop.LeftUp);
-        SetButton(ref _rightDown, rightDown, SendInputInterop.RightDown, SendInputInterop.RightUp);
     }
 
     public void ReleaseButtons()

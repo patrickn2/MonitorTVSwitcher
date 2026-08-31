@@ -6,6 +6,7 @@ internal sealed class DisplaySwitchService
 {
     private int _busy;
     private readonly JoystickWatcher _joystick;
+    private readonly SynchronizationContext? _ui = SynchronizationContext.Current;
 
     public DisplaySwitchService(JoystickWatcher joystick)
     {
@@ -49,19 +50,22 @@ internal sealed class DisplaySwitchService
         SetStatus("Switching display…");
         AppLog.Write($"SwitchTo start {devicePath}");
 
-        try
+        Task.Run(() =>
         {
-            PerformSwitch(devicePath);
-        }
-        catch (Exception ex)
-        {
-            AppLog.Write($"Switch failed: {ex}");
-            SetStatus($"Switch failed: {ex.Message}");
-        }
-        finally
-        {
-            EndBusy();
-        }
+            try
+            {
+                PerformSwitch(devicePath);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write($"Switch failed: {ex}");
+                SetStatus($"Switch failed: {ex.Message}");
+            }
+            finally
+            {
+                EndBusy();
+            }
+        });
     }
 
     private void EndBusy()
@@ -69,7 +73,7 @@ internal sealed class DisplaySwitchService
         Interlocked.Exchange(ref _busy, 0);
         _joystick.IsBusy = false;
         _joystick.ResetSequence();
-        BusyChanged?.Invoke();
+        PostToUi(() => BusyChanged?.Invoke());
         AppLog.Write("Switch pipeline finished; commands accepted again.");
     }
 
@@ -113,7 +117,7 @@ internal sealed class DisplaySwitchService
 
         ApplyModeHdrAndAudio(refreshed, settings);
         SettingsStore.Save(settings);
-        ExclusiveRoleChanged?.Invoke(DisplayClassifier.Resolve(refreshed, settings));
+        PostToUi(() => ExclusiveRoleChanged?.Invoke(DisplayClassifier.Resolve(refreshed, settings)));
         SetStatus($"Switched to {refreshed.MenuLabel}.");
     }
 
@@ -198,9 +202,20 @@ internal sealed class DisplaySwitchService
                 !string.Equals(d.DevicePath, current.DevicePath, StringComparison.OrdinalIgnoreCase));
     }
 
+    private void PostToUi(Action action)
+    {
+        if (_ui is null)
+        {
+            action();
+            return;
+        }
+
+        _ui.Post(_ => action(), null);
+    }
+
     private void SetStatus(string status)
     {
         LastStatus = status;
-        StatusChanged?.Invoke(status);
+        PostToUi(() => StatusChanged?.Invoke(status));
     }
 }

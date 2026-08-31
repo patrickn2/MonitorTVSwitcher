@@ -71,8 +71,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _joystick.Triggered += () =>
         {
-            if (_switcher.IsBusy || _mouse.Enabled)
+            if (_switcher.IsBusy)
             {
+                AppLog.Write("Joystick display toggle ignored: switch already in progress.");
                 return;
             }
 
