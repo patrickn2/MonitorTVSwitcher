@@ -155,8 +155,9 @@ internal sealed class DisplaySwitchService
     private static void ApplyAudio(DisplayInfo target, AppSettings settings)
     {
         var role = DisplayClassifier.Resolve(target, settings);
-        var devices = AudioService.GetPlaybackDevices();
+        var devices = WaitForPlaybackDevices(target, settings, role);
         var mapping = settings.GetOrCreateOverride(target.DevicePath);
+        AppLog.Write($"Audio role={role} devices={devices.Count} [{string.Join("; ", devices.Select(d => d.Name))}]");
 
         if (role == DisplayRole.Tv)
         {
@@ -164,7 +165,13 @@ internal sealed class DisplaySwitchService
                 ?? AudioService.GuessPlaybackDeviceId(target, devices);
             if (!string.IsNullOrWhiteSpace(audioId))
             {
+                string? name = devices.FirstOrDefault(d => d.Id == audioId)?.Name ?? audioId;
                 AudioService.SetDefaultPlayback(audioId);
+                AppLog.Write($"Default playback set to {name} now={AudioService.GetDefaultPlaybackId()}");
+            }
+            else
+            {
+                AppLog.Write("No TV playback device was found.");
             }
 
             return;
@@ -173,11 +180,37 @@ internal sealed class DisplaySwitchService
         if (!string.IsNullOrWhiteSpace(settings.LastMonitorPlaybackDeviceId))
         {
             AudioService.SetDefaultPlayback(settings.LastMonitorPlaybackDeviceId);
+            AppLog.Write($"Default playback restored to {settings.LastMonitorPlaybackDeviceId} now={AudioService.GetDefaultPlaybackId()}");
         }
         else if (!string.IsNullOrWhiteSpace(mapping.PlaybackDeviceId))
         {
             AudioService.SetDefaultPlayback(mapping.PlaybackDeviceId);
+            AppLog.Write($"Default playback set to mapped {mapping.PlaybackDeviceId} now={AudioService.GetDefaultPlaybackId()}");
         }
+    }
+
+    private static IReadOnlyList<AudioDeviceInfo> WaitForPlaybackDevices(DisplayInfo target, AppSettings settings, DisplayRole role)
+    {
+        var mapping = settings.GetOrCreateOverride(target.DevicePath);
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            var devices = AudioService.GetPlaybackDevices();
+            if (role != DisplayRole.Tv)
+            {
+                return devices;
+            }
+
+            string? audioId = mapping.PlaybackDeviceId
+                ?? AudioService.GuessPlaybackDeviceId(target, devices);
+            if (!string.IsNullOrWhiteSpace(audioId))
+            {
+                return devices;
+            }
+
+            Thread.Sleep(250);
+        }
+
+        return AudioService.GetPlaybackDevices();
     }
 
     private static DisplayInfo? PickOpposite(IReadOnlyList<DisplayInfo> displays, DisplayInfo? current, AppSettings settings)

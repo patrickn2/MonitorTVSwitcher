@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="MonitorTVSwitcher.csproj" />
+  <Project Path="MonitorTVSwitcher.Tests\MonitorTVSwitcher.Tests.csproj" />
 </Solution>

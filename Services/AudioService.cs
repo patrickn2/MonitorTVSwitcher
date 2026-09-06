@@ -15,7 +15,8 @@ internal static class AudioService
         try
         {
             enumerator = (IMMDeviceEnumerator)CoreAudioInterop.CreateEnumerator();
-            Marshal.ThrowExceptionForHR(enumerator.EnumAudioEndpoints(EDataFlow.Render, CoreAudioInterop.DeviceStateActive, out collection));
+            Marshal.ThrowExceptionForHR(enumerator.EnumAudioEndpoints(EDataFlow.Render, CoreAudioInterop.DeviceStateActive, out IntPtr collectionPtr));
+            collection = WrapDeviceCollection(collectionPtr);
             Marshal.ThrowExceptionForHR(collection.GetCount(out uint count));
 
             for (uint i = 0; i < count; i++)
@@ -27,26 +28,16 @@ internal static class AudioService
                     Marshal.ThrowExceptionForHR(collection.Item(i, out device));
                     Marshal.ThrowExceptionForHR(device.GetId(out string id));
                     Marshal.ThrowExceptionForHR(device.OpenPropertyStore(0, out store));
-
-                    var key = CoreAudioInterop.PkeyDeviceFriendlyName;
-                    Marshal.ThrowExceptionForHR(store.GetValue(ref key, out PropVariant value));
-                    string? name = null;
-                    try
-                    {
-                        if ((value.vt == CoreAudioInterop.VtLpWStr || value.vt == 8) && value.Data != IntPtr.Zero)
-                        {
-                            name = Marshal.PtrToStringUni(value.Data);
-                        }
-                    }
-                    finally
-                    {
-                        CoreAudioInterop.PropVariantClear(ref value);
-                    }
+                    string? name = ReadDeviceName(store);
 
                     if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(name))
                     {
                         devices.Add(new AudioDeviceInfo { Id = id, Name = name });
                     }
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Write($"Skipping audio endpoint: {ex.Message}");
                 }
                 finally
                 {
@@ -62,8 +53,9 @@ internal static class AudioService
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Write($"GetPlaybackDevices failed: {ex.Message}");
             return devices;
         }
         finally
@@ -155,18 +147,81 @@ internal static class AudioService
             return null;
         }
 
-        string displayName = display.FriendlyName;
-        var byName = devices.FirstOrDefault(d =>
-            !string.IsNullOrWhiteSpace(displayName)
-            && d.Name.Contains(FirstToken(displayName), StringComparison.OrdinalIgnoreCase)
-            && LooksLikeDisplayAudio(d.Name));
-        if (byName is not null)
+        string displayName = display.FriendlyName?.Trim() ?? "";
+        if (!string.IsNullOrWhiteSpace(displayName))
         {
-            return byName.Id;
+            var byDisplayName = devices.FirstOrDefault(d =>
+                d.Name.Contains(displayName, StringComparison.OrdinalIgnoreCase));
+            if (byDisplayName is not null)
+            {
+                return byDisplayName.Id;
+            }
+
+            string token = FirstToken(displayName);
+            var byName = devices.FirstOrDefault(d =>
+                d.Name.Contains(token, StringComparison.OrdinalIgnoreCase)
+                && LooksLikeDisplayAudio(d.Name));
+            if (byName is not null)
+            {
+                return byName.Id;
+            }
         }
 
         var hdmi = devices.FirstOrDefault(d => LooksLikeDisplayAudio(d.Name));
         return hdmi?.Id;
+    }
+
+    private static IMMDeviceCollection WrapDeviceCollection(IntPtr pointer)
+    {
+        if (pointer == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("EnumAudioEndpoints returned no collection.");
+        }
+
+        try
+        {
+            return (IMMDeviceCollection)Marshal.GetObjectForIUnknown(pointer);
+        }
+        finally
+        {
+            Marshal.Release(pointer);
+        }
+    }
+
+    private static string? ReadDeviceName(IPropertyStore store)
+    {
+        var friendly = CoreAudioInterop.PkeyDeviceFriendlyName;
+        string? name = ReadPropString(store, ref friendly);
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            return name;
+        }
+
+        var desc = CoreAudioInterop.PkeyDeviceDeviceDesc;
+        return ReadPropString(store, ref desc);
+    }
+
+    private static string? ReadPropString(IPropertyStore store, ref PropertyKey key)
+    {
+        int hr = store.GetValue(ref key, out PropVariant value);
+        try
+        {
+            if (hr < 0)
+            {
+                return null;
+            }
+
+            if ((value.vt == CoreAudioInterop.VtLpWStr || value.vt == 8) && value.Data != IntPtr.Zero)
+            {
+                return Marshal.PtrToStringUni(value.Data);
+            }
+
+            return null;
+        }
+        finally
+        {
+            CoreAudioInterop.PropVariantClear(ref value);
+        }
     }
 
     private static bool LooksLikeDisplayAudio(string name)

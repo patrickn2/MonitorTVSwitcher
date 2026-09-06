@@ -6,6 +6,7 @@ internal static class CoreAudioInterop
 {
     public static readonly Guid MmDeviceEnumeratorClsid = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
     public static readonly PropertyKey PkeyDeviceFriendlyName = new(new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), 14);
+    public static readonly PropertyKey PkeyDeviceDeviceDesc = new(new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), 2);
 
     public const uint DeviceStateActive = 0x00000001;
     public const ushort VtLpWStr = 31;
@@ -66,7 +67,7 @@ internal struct PropVariant
 internal interface IMMDeviceEnumerator
 {
     [PreserveSig]
-    int EnumAudioEndpoints(EDataFlow dataFlow, uint dwStateMask, out IMMDeviceCollection ppDevices);
+    int EnumAudioEndpoints(EDataFlow dataFlow, uint dwStateMask, out IntPtr ppDevices);
 
     [PreserveSig]
     int GetDefaultAudioEndpoint(EDataFlow dataFlow, ERole role, out IMMDevice ppEndpoint);
@@ -81,8 +82,11 @@ internal interface IMMDeviceEnumerator
     int UnregisterEndpointNotificationCallback(IntPtr pClient);
 }
 
+// Windows returns a collection whose vtable is IMMDeviceCollection, but QueryInterface
+// for the documented IID {0BD7A1BE-...} fails. QI for IUnknown succeeds and slots 3-4
+// are still GetCount/Item, so the RCW is bound to IUnknown.
 [ComImport]
-[Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387C5E")]
+[Guid("00000000-0000-0000-C000-000000000046")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 internal interface IMMDeviceCollection
 {
