@@ -54,7 +54,7 @@ A second recorded joystick shortcut (combination or sequence, same as the displa
 - **Pointer speed** is adjustable in Settings.
 - **Test mouse** in Settings turns the pointer on immediately so you can try stick, clicks, and speed.
 - The same shortcut turns it off.
-- While mouse mode is on, the click buttons are not used for the display-switch shortcut, and Settings Switch buttons stay disabled so a mis-click cannot change display.
+- Display switching still works while mouse mode is on, from the joystick shortcut, the tray menu, or Settings. Click buttons are left out of the display-switch shortcut so a click does not also count as a switch button. Settings Switch buttons disable only while a switch is already running.
 
 Record the mouse shortcut and click buttons in **Settings → Gamepad mouse control**.
 
@@ -63,7 +63,7 @@ When you switch:
 1. The chosen display becomes the only active screen.
 2. A suitable resolution is applied.
 3. HDR is enabled on the TV when the display supports it.
-4. Default playback follows the TV (HDMI / ARC / the device you picked) and returns to the last monitor speakers when you switch back.
+4. Default playback follows the TV. A sound device pinned in Settings is used as-is. Otherwise the app picks the playback device whose name matches the TV, then falls back to HDMI, ARC, or other display audio. Switching back restores the speakers that were in use on the monitor.
 
 ## Build from source
 
