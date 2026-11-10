@@ -15,7 +15,7 @@
     <Product>Monitor/TV Switcher</Product>
     <Company>Monitor/TV Switcher</Company>
     <Description>Switch display, HDR, and audio from a joystick combination.</Description>
-    <Version>1.0</Version>
+    <Version>1.1</Version>
     <NeutralLanguage>en</NeutralLanguage>
     <DefaultItemExcludes>$(DefaultItemExcludes);tools/**;MonitorTVSwitcher.Tests/**</DefaultItemExcludes>
   </PropertyGroup>

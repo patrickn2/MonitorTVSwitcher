@@ -14,11 +14,11 @@ A Windows tray app that switches your PC between a **monitor** and a **TV** from
   <img src="Assets/screenshot-tray.png" alt="Tray menu to switch between monitor and TV" width="280">
 </p>
 
-## Download 1.0
+## Download 1.1
 
-- **[Installer (recommended)](https://github.com/patrickn2/MonitorTVSwitcher/releases/download/v1.0/MonitorTVSwitcher-Setup-1.0.exe)** — `MonitorTVSwitcher-Setup-1.0.exe`
-- **[Portable zip](https://github.com/patrickn2/MonitorTVSwitcher/releases/download/v1.0/MonitorTVSwitcher-1.0-win-x64.zip)** — extract and run `MonitorTVSwitcher.exe`
-- All files: **[Releases](https://github.com/patrickn2/MonitorTVSwitcher/releases/tag/v1.0)**
+- **[Installer (recommended)](https://github.com/patrickn2/MonitorTVSwitcher/releases/download/v1.1/MonitorTVSwitcher-Setup-1.1.exe)** — `MonitorTVSwitcher-Setup-1.1.exe`
+- **[Portable zip](https://github.com/patrickn2/MonitorTVSwitcher/releases/download/v1.1/MonitorTVSwitcher-1.1-win-x64.zip)** — extract and run `MonitorTVSwitcher.exe`
+- All files: **[Releases](https://github.com/patrickn2/MonitorTVSwitcher/releases/tag/v1.1)**
 
 Setup does not need administrator rights. Optional desktop shortcut and “Start with Windows” are offered during install.
 
@@ -26,16 +26,16 @@ Windows SmartScreen may warn on the first run because this build is not Authenti
 
 ## Antivirus
 
-Microsoft Defender scanned the 1.0 binaries on 26 August 2026 and **found no threats**.
+Microsoft Defender scanned the 1.1 binaries on 10 November 2026 and **found no threats**.
 
 | File | SHA256 | Defender |
 | --- | --- | --- |
-| `MonitorTVSwitcher-Setup-1.0.exe` | `25EA2D919A829D0018763034BFC9A3E3CE8F9DB960EA6BB4325F79F64B294542` | No threats found |
-| `MonitorTVSwitcher-1.0-win-x64.zip` | `35BE7D21A68858ADD0BF9E9F9A5F6EB7364DCD149BB0A5DE405200733BCAF2C7` | No threats found |
+| `MonitorTVSwitcher-Setup-1.1.exe` | `3F2B6BC11DE60AFED5463EA83C7AE28C30A3A47607A37FA2F51CD1EC3B84B879` | No threats found |
+| `MonitorTVSwitcher-1.1-win-x64.zip` | `4AC748DA080E0DD8DBB6E4F5907047E4E252A06450433F0F3C918DDC8CAA4E35` | No threats found |
 
 Full scan log: [antivirus-report.md](antivirus-report.md)
 
-Re-check the installer yourself on [VirusTotal](https://www.virustotal.com/gui/file/25EA2D919A829D0018763034BFC9A3E3CE8F9DB960EA6BB4325F79F64B294542).
+Re-check the installer yourself on [VirusTotal](https://www.virustotal.com/gui/file/3F2B6BC11DE60AFED5463EA83C7AE28C30A3A47607A37FA2F51CD1EC3B84B879).
 
 ## How it works
 
@@ -71,6 +71,6 @@ When you switch:
 .\build-installer.ps1
 ```
 
-That publishes a self-contained `win-x64` build and compiles `dist\MonitorTVSwitcher-Setup-1.0.exe` with Inno Setup (downloaded automatically if needed).
+That publishes a self-contained `win-x64` build and compiles `dist\MonitorTVSwitcher-Setup-1.1.exe` with Inno Setup (downloaded automatically if needed).
 
 Open `MonitorTVSwitcher.slnx` in Visual Studio or run `dotnet build MonitorTVSwitcher.slnx -c Release`.
